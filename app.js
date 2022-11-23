@@ -45,5 +45,8 @@ app.post("/refresh_token", (req, res) => userCtrl.getAccessToken(req, res));
 app.post("/send", (req, res) => main.postLink(req, res, db, sendInvitation));
 app.post("/accept", (req, res) => main.acceptInvitation(req, res, db));
 app.get("/", (req, res) => main.getAllAccounts(req, res, db));
+app.get("*", (req, res) => {
+  res.send("Page not found");
+});
 
 app.listen(PORT, () => console.log(`App is running on port ${PORT}`));
