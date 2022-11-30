@@ -58,7 +58,10 @@ const sendLink = (to, url, txt) => {
   };
 
   smtpTransport.sendMail(mailOptions, (err, infor) => {
-    if (err) return err;
+    if (err) {
+      console.log(error);
+      return err;
+    }
     return infor;
   });
 };

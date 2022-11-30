@@ -1,7 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const sendMail = require("../mailer");
-const sendLink = require("../mailer");
+const sendMail = require("./mailer.js");
+const sendLink = require("./mailer.js");
 const { google } = require("googleapis");
 const { OAuth2 } = google.auth;
 const fetch = require("node-fetch");
@@ -24,7 +24,6 @@ const getAllAccounts = (req, res, db) => {
 };
 
 const getAccountAndGroup = async (req, res, db) => {
-  console.log(req.query.email);
   await db
     .select("id_member")
     .where({
@@ -123,7 +122,7 @@ const postLink = async (req, res, db) => {
       id_group,
       email,
     });
-    const url = `${CLIENT_URL}/send/${activation_token}`;
+    const url = `${CLIENT_URL}/${id_group}/${activation_token}`;
     sendLink(email, url, "Join group");
     res.json({ msg: "Join Success!" });
   } catch (err) {
@@ -134,7 +133,6 @@ const postLink = async (req, res, db) => {
 const activateEmail = async (req, res, db) => {
   try {
     const { activation_token } = req.body;
-    console.log(activation_token);
     const user = jwt.verify(
       activation_token,
       process.env.ACTIVATION_TOKEN_SECRET
@@ -150,6 +148,7 @@ const activateEmail = async (req, res, db) => {
       .then((items) => {
         if (items.length) {
           res.status(400).json({ dbError: "This email already exists." });
+          return;
         }
       });
 
@@ -157,10 +156,9 @@ const activateEmail = async (req, res, db) => {
       .insert({ email, fullname, password, telephone })
       .returning("*")
       .then((item) => {
-        res.json(item);
+        res.json({ msg: "Account has been activated!" });
       })
       .catch((err) => res.status(400).json({ dbError: "db error" }));
-    res.json({ msg: "Account has been activated!" });
   } catch (err) {
     return res.status(500).json({ msg: err.message });
   }
@@ -169,7 +167,7 @@ const activateEmail = async (req, res, db) => {
 const acceptInvitation = async (req, res, db) => {
   try {
     const { activation_token } = req.body;
-    console.log(activation_token);
+
     const invite = jwt.verify(
       activation_token,
       process.env.ACTIVATION_TOKEN_SECRET
@@ -193,18 +191,19 @@ const acceptInvitation = async (req, res, db) => {
             .from("MEMBER_GROUP")
             .then((result) => {
               if (result.length) {
-                res.status(400).json({ dbError: "This email already exists." });
+                res.status(400).json({
+                  dbError: "This email already exists in this group.",
+                });
               } else {
                 db("MEMBER_GROUP")
-                  .insert({ member: key, id_group: id_group })
+                  .insert({ member: key, id_group: id_group, role: "member" })
                   .returning("*")
                   .then((item) => {
-                    res.json(item);
+                    res.json({ msg: "Account has been joined group" });
                   })
                   .catch((err) =>
                     res.status(400).json({ dbError: "db error" })
                   );
-                res.json({ msg: "Account has been joined group" });
               }
             });
         }
@@ -215,12 +214,32 @@ const acceptInvitation = async (req, res, db) => {
 };
 
 const postGroup = async (req, res, db) => {
-  const { name } = req.body;
+  const { name, user } = req.body;
+  let value = {};
   db("GROUP")
     .insert({ name })
     .returning("*")
     .then((item) => {
-      res.json(item);
+      const key = item[0]["id"];
+      value.id = key;
+
+      db.select("id_member")
+        .where({
+          email: user,
+        })
+        .from("ACCOUNT")
+        .then((item) => {
+          value.user = item[0]["id_member"];
+
+          db("MEMBER_GROUP")
+            .insert({ member: value.user, id_group: value.id, role: "owner" })
+            .returning("*")
+            .then((item_2) => {
+              res.json(item_2);
+            })
+            .catch((err) => res.status(400).json({ dbError: "db error" }));
+        })
+        .catch((err) => res.status(400).json({ dbError: "db error" }));
     })
     .catch((err) => res.status(400).json({ dbError: "db error" }));
 };
@@ -369,6 +388,28 @@ const facebookLogin = async (req, res, db) => {
   }
 };
 
+const deleteMember = async (req, res, db) => {
+  await db
+    .select("id_member")
+    .where({
+      email: req.body.member,
+    })
+    .from("ACCOUNT")
+    .then((item) => {
+      db("MEMBER_GROUP")
+        .del()
+        .where({
+          id_group: req.body.id_group,
+          member: item[0]["id_member"],
+        })
+        .then((result) => {
+          res.json(result);
+        })
+        .catch((err) => res.status(400).json({ dbError: "db error" }));
+    })
+    .catch((err) => res.status(400).json({ msg: err.message }));
+};
+
 const createActivationToken = (payload) => {
   return jwt.sign(payload, process.env.ACTIVATION_TOKEN_SECRET, {
     expiresIn: "5m",
@@ -394,6 +435,7 @@ module.exports = {
   getMemberofGroupById,
   postAccount,
   postLink,
+  deleteMember,
   activateEmail,
   acceptInvitation,
   postGroup,

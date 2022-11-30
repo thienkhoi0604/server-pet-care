@@ -5,8 +5,8 @@ const app = express();
 
 const dotenv = require("dotenv");
 const main = require("./controllers/main.js");
-const { sendConfirmationEmail } = require("./mailer");
-const { sendInvitation } = require("./sendLink");
+const { sendConfirmationEmail } = require("./controllers/mailer.js");
+const { sendInvitation } = require("./controllers/sendLink.js");
 
 dotenv.config();
 
@@ -45,6 +45,7 @@ app.post("/refresh_token", (req, res) => userCtrl.getAccessToken(req, res));
 app.post("/send", (req, res) => main.postLink(req, res, db, sendInvitation));
 app.post("/accept", (req, res) => main.acceptInvitation(req, res, db));
 app.get("/", (req, res) => main.getAllAccounts(req, res, db));
+app.post("/delete", (req, res) => main.deleteMember(req, res, db));
 app.get("*", (req, res) => {
   res.send("Page not found");
 });
